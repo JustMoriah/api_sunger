@@ -15,26 +15,8 @@ router.get('/users', (req, res) => {
   });
 });
 
-// Obtener un registro por su id
-router.get('/users/:id', (req, res) => {
-    const id = req.params.id;
-    connection.query('SELECT * FROM user_table WHERE id_user = ?', id, (err, results) => {
-
-      if (err) {
-        console.error('Error al obtener el registro:', err);
-        res.status(500).json({ error: 'Error al obtener el registro' });
-        return;
-      }
-      if (results.length === 0) {
-        res.status(404).json({ error: 'Registro no encontrado' });
-        return;
-      }
-      res.json(results[0]);
-    });
-});
-
 // Obtener un registro por su e-mail
-router.get('/users/:email', (req, res) => {
+router.get('/users/email/:email', (req, res) => {
     const email = req.params.email;
     connection.query('SELECT * FROM user_table WHERE email = ?', email, (err, results) => {
       if (err) {
@@ -51,9 +33,26 @@ router.get('/users/:email', (req, res) => {
 });
 
 // Obtener un registro por su password
-router.get('/users/:passwd', (req, res) => {
+router.get('/users/passwd/:passwd', (req, res) => {
   const passwd = req.params.passwd;
   connection.query('SELECT * FROM user_table WHERE passwd = ?', passwd, (err, results) => {
+    if (err) {
+      console.error('Error al obtener el registro:', err);
+      res.status(500).json({ error: 'Error al obtener el registro' });
+      return;
+    }
+    if (results.length === 0) {
+      res.status(404).json({ error: 'Registro no encontrado' });
+      return;
+    }
+    res.json(results[0]);
+  });
+});
+
+// Obtener un registro por su ID
+router.get('/users/id/:id_user', (req, res) => {
+  const id_user = req.params.id_user;
+  connection.query('SELECT * FROM user_table WHERE id_user = ?', id_user, (err, results) => {
     if (err) {
       console.error('Error al obtener el registro:', err);
       res.status(500).json({ error: 'Error al obtener el registro' });
