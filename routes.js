@@ -132,11 +132,11 @@ router.post("/subir-excel", upload.single("file"), async (req, res) => {
     let registrosDuplicados = 0;
     console.log("Worksheet Data:", worksheet);
     for (const row of worksheet) {
-      let { id_rol, nombre, apellido, fn, correo, contrasena } = row;
+      let { id_rol, nombre, apellido, fn, genero, correo, contrasena, activo } = row;
       
       console.log('Checking row data:', row);
       // Check if data is valid before insertion
-      if (!id_rol || !nombre || !apellido || !fn || !correo || !contrasena) {
+      if (!id_rol || !nombre || !apellido || !fn || !genero || !correo || !contrasena || !activo) {
         console.log("Faltan datos en la fila, no se insertará:", row);
         continue; // Skip row if missing data
       }
@@ -156,8 +156,8 @@ router.post("/subir-excel", upload.single("file"), async (req, res) => {
       } else {
         await new Promise((resolve, reject) => {
           connection.query(
-            "INSERT INTO usuarios (id_rol, nombre, apellido, fn, correo, contrasena) VALUES (?, ?, ?, ?, ?, ?)",
-            [id_rol, nombre, apellido, fn, correo, contrasena],
+            "INSERT INTO usuarios (id_rol, nombre, apellido, fn, genero, correo, contrasena, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [id_rol, nombre, apellido, fn, genero, correo, contrasena, activo],
             (err, results) => {
               if (err) reject(err);
               resolve(results);
@@ -403,9 +403,9 @@ router.get('/logins', (req, res) => {
 });
 
 // Obtener un cargador por su ID
-router.get('/logins/id/:id_registro', (req, res) => {
-  const id_registro = req.params.id_registro;
-  connection.query('SELECT * FROM login WHERE id_registro = ?', id_registro, (err, results) => {
+router.get('/logins/id/:id_log', (req, res) => {
+  const id_log = req.params.id_log;
+  connection.query('SELECT * FROM login WHERE id_log = ?', id_log, (err, results) => {
     if (err) {
       console.error('Error al obtener el login:', err);
       res.status(500).json({ error: 'Error al obtener el login' });
@@ -419,8 +419,19 @@ router.get('/logins/id/:id_registro', (req, res) => {
   });
 });
 
-// Crear un nuevo cargador
 router.post('/logins', (req, res) => {
+  const { id_usuario, accion, hora } = req.body;
+
+  // Validate that id_usuario is a valid number
+  if (!id_usuario || isNaN(id_usuario)) {
+    return res.status(400).json({ error: 'Invalid id_usuario' });
+  }
+
+  // Validate that accion and hora are not empty
+  if (!accion || !hora) {
+    return res.status(400).json({ error: 'Accion or hora cannot be empty' });
+  }
+
   const nuevoRegistro = req.body;
   connection.query('INSERT INTO login SET ?', nuevoRegistro, (err, results) => {
     if (err) {
@@ -432,11 +443,12 @@ router.post('/logins', (req, res) => {
   });
 });
 
+
 // Actualizar un registro
-router.put('/logins/id/:id_registro', (req, res) => {
-  const id_registro = req.params.id_registro;
+router.put('/logins/id/:id_log', (req, res) => {
+  const id_log = req.params.id_log;
   const datosActualizados = req.body;
-  connection.query('UPDATE login SET ? WHERE id_registro = ?', [datosActualizados, id_registro], (err, results) => {
+  connection.query('UPDATE login SET ? WHERE id_log = ?', [datosActualizados, id_log], (err, results) => {
     if (err) {
       console.error('Error al actualizar el registro:', err);
       res.status(500).json({ error: 'Error al actualizar el registro' });
@@ -447,9 +459,9 @@ router.put('/logins/id/:id_registro', (req, res) => {
 });
 
 // Eliminar un registro
-router.delete('/logins/id/:id_registro', (req, res) => {
-  const id_registro = req.params.id_registro;
-  connection.query('DELETE FROM login WHERE id_registro = ?', id_registro, (err, results) => {
+router.delete('/logins/id/:id_log', (req, res) => {
+  const id_log = req.params.id_log;
+  connection.query('DELETE FROM login WHERE id_log = ?', id_log, (err, results) => {
     if (err) {
       console.error('Error al eliminar el registro:', err);
       res.status(500).json({ error: 'Error al eliminar el registro' });
