@@ -1,43 +1,51 @@
-// routes.js
+// Importación de dependencias necesarias
 const express = require('express');
-const router = express.Router();
-const connection = require('./db');
-const multer = require('multer');
-const xlsx = require('xlsx');
-const cors =require("cors")
+const router = express.Router(); // Crea un enrutador de Express
+const connection = require('./db'); // Conexión a la base de datos
+const multer = require('multer'); // Middleware para manejar archivos
+const xlsx = require('xlsx'); // Lectura de archivos Excel
+const cors = require("cors"); // Middleware para permitir CORS
+
+// Configuración de almacenamiento en memoria para archivos subidos
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-// Obtener todos los users
+///////////////////////////////////////////////////////////////////////////////////////////
+// USERS
+///////////////////////////////////////////////////////////////////////////////////////////
+
+// Obtener todos los usuarios
 router.get('/users', (req, res) => {
   connection.query('SELECT * FROM usuarios', (err, results) => {
+    // Manejo de error
     if (err) {
       console.error('Error al obtener users:', err);
       res.status(500).json({ error: 'Error al obtener users' });
       return;
     }
+    // Respuesta con la lista de usuarios
     res.json(results);
   });
 });
 
-// Obtener un registro por su e-mail
+// Obtener un usuario por correo
 router.get('/users/correo/:correo', (req, res) => {
-    const correo = req.params.correo;
-    connection.query('SELECT * FROM usuarios WHERE correo = ?', correo, (err, results) => {
-      if (err) {
-        console.error('Error al obtener el registro:', err);
-        res.status(500).json({ error: 'Error al obtener el registro' });
-        return;
-      }
-      if (results.length === 0) {
-        res.status(404).json({ error: 'Registro no encontrado' });
-        return;
-      }
-      res.json(results[0]);
-    });
+  const correo = req.params.correo;
+  connection.query('SELECT * FROM usuarios WHERE correo = ?', correo, (err, results) => {
+    if (err) {
+      console.error('Error al obtener el registro:', err);
+      res.status(500).json({ error: 'Error al obtener el registro' });
+      return;
+    }
+    if (results.length === 0) {
+      res.status(404).json({ error: 'Registro no encontrado' });
+      return;
+    }
+    res.json(results[0]);
+  });
 });
 
-// Obtener un registro por su password
+// Obtener usuario por contraseña
 router.get('/users/contrasena/:contrasena', (req, res) => {
   const contrasena = req.params.contrasena;
   connection.query('SELECT * FROM usuarios WHERE contrasena = ?', contrasena, (err, results) => {
@@ -54,7 +62,7 @@ router.get('/users/contrasena/:contrasena', (req, res) => {
   });
 });
 
-// Obtener un registro por su ID
+// Obtener usuario por ID
 router.get('/users/id/:id_usuario', (req, res) => {
   const id_usuario = req.params.id_usuario;
   connection.query('SELECT * FROM usuarios WHERE id_usuario = ?', id_usuario, (err, results) => {
@@ -71,7 +79,7 @@ router.get('/users/id/:id_usuario', (req, res) => {
   });
 });
 
-// Crear un nuevo registro
+// Crear un nuevo usuario
 router.post('/users', (req, res) => {
   const nuevoRegistro = req.body;
   connection.query('INSERT INTO usuarios SET ?', nuevoRegistro, (err, results) => {
@@ -84,7 +92,7 @@ router.post('/users', (req, res) => {
   });
 });
 
-// Actualizar un registro
+// Actualizar un usuario por ID
 router.put('/users/id/:id', (req, res) => {
   const id = req.params.id;
   const datosActualizados = req.body;
@@ -98,7 +106,7 @@ router.put('/users/id/:id', (req, res) => {
   });
 });
 
-// Eliminar un registro
+// Eliminar un usuario por ID
 router.delete('/users/id/:id', (req, res) => {
   const id = req.params.id;
   connection.query('DELETE FROM usuarios WHERE id_usuario = ?', id, (err, results) => {
@@ -111,74 +119,73 @@ router.delete('/users/id/:id', (req, res) => {
   });
 });
 
-// Subir un Excel
+// Subida de archivo Excel para usuarios
 router.post("/subir-excel", upload.single("file"), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: "No se subió ningún archivo." });
   }
 
-  console.log("Archivo recibido:", req.file.originalname);
+  // Lectura y conversión del archivo Excel
+  const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
+  const sheetName = workbook.SheetNames[0];
+  const worksheet = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
 
-  try {
-    const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
-    const sheetName = workbook.SheetNames[0];
-    const worksheet = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
+  // Inicialización de contadores
+  let registrosInsertados = 0;
+  let registrosDuplicados = 0;
+  let registrosFaltantes = 0;
 
-    console.log("Datos leídos del archivo:", worksheet);
+  // Procesamiento de cada fila del Excel
+  for (const row of worksheet) {
+    let { id_rol, nombre, apellido, fn, genero, correo, contrasena, activo } = row;
 
-    let registrosInsertados = 0;
-    let registrosDuplicados = 0;
-    let registrosFaltantes = 0;
-
-    for (const row of worksheet) {
-      let { id_rol, nombre, apellido, fn, genero, correo, contrasena, activo } = row;
-      
-      if (!id_rol || !nombre || !apellido || !fn || !genero || !correo || !contrasena || !activo) {
-        row.status = "Datos faltantes";
-        registrosFaltantes++;
-        continue;
-      }
-
-      const usuarioExistente = await new Promise((resolve, reject) => {
-        connection.query("SELECT * FROM usuarios WHERE correo = ?", [correo], (err, results) => {
-          if (err) reject(err);
-          resolve(results);
-        });
-      });
-
-      if (usuarioExistente.length > 0) {
-        row.status = "Duplicado";
-        registrosDuplicados++;
-      } else {
-        await new Promise((resolve, reject) => {
-          connection.query(
-            "INSERT INTO usuarios (id_rol, nombre, apellido, fn, genero, correo, contrasena, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            [id_rol, nombre, apellido, fn, genero, correo, contrasena, activo],
-            (err, results) => {
-              if (err) reject(err);
-              resolve(results);
-            }
-          );
-        });
-        row.status = "Subido";
-        registrosInsertados++;
-      }
+    if (!id_rol || !nombre || !apellido || !fn || !genero || !correo || !contrasena || !activo) {
+      row.status = "Datos faltantes";
+      registrosFaltantes++;
+      continue;
     }
 
-    res.json({
-      registrosInsertados,
-      registrosDuplicados,
-      registrosFaltantes,
-      data: worksheet,
+    // Verifica duplicados
+    const usuarioExistente = await new Promise((resolve, reject) => {
+      connection.query("SELECT * FROM usuarios WHERE correo = ?", [correo], (err, results) => {
+        if (err) reject(err);
+        resolve(results);
+      });
     });
-  } catch (error) {
-    console.error("Error al procesar archivo:", error);
-    res.status(500).json({ error: "Error al procesar el archivo." });
+
+    // Inserta si no existe
+    if (usuarioExistente.length > 0) {
+      row.status = "Duplicado";
+      registrosDuplicados++;
+    } else {
+      await new Promise((resolve, reject) => {
+        connection.query(
+          "INSERT INTO usuarios (id_rol, nombre, apellido, fn, genero, correo, contrasena, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+          [id_rol, nombre, apellido, fn, genero, correo, contrasena, activo],
+          (err, results) => {
+            if (err) reject(err);
+            resolve(results);
+          }
+        );
+      });
+      row.status = "Subido";
+      registrosInsertados++;
+    }
   }
+
+  // Devuelve un resumen del procesamiento
+  res.json({
+    registrosInsertados,
+    registrosDuplicados,
+    registrosFaltantes,
+    data: worksheet,
+  });
 });
 
 ///////////////////////////////////////////////////////////////////////////////////////////
-//Role stuff
+// ROLES
+///////////////////////////////////////////////////////////////////////////////////////////
+
 // Obtener todos los roles
 router.get('/roles', (req, res) => {
   connection.query('SELECT * FROM roles', (err, results) => {
@@ -187,7 +194,7 @@ router.get('/roles', (req, res) => {
       res.status(500).json({ error: 'Error al obtener roles' });
       return;
     }
-    res.json(results);
+    res.json(results); // Devuelve todos los registros de la tabla 'roles'
   });
 });
 
@@ -204,7 +211,7 @@ router.get('/roles/id/:id_rol', (req, res) => {
       res.status(404).json({ error: 'Registro no encontrado' });
       return;
     }
-    res.json(results[0]);
+    res.json(results[0]); // Devuelve el rol específico
   });
 });
 
@@ -221,7 +228,7 @@ router.post('/roles', (req, res) => {
   });
 });
 
-// Actualizar un registro
+// Actualizar un rol existente por ID
 router.put('/roles/id/:id', (req, res) => {
   const id = req.params.id;
   const datosActualizados = req.body;
@@ -235,7 +242,7 @@ router.put('/roles/id/:id', (req, res) => {
   });
 });
 
-// Eliminar un registro
+// Eliminar un rol por ID
 router.delete('/roles/id/:id', (req, res) => {
   const id = req.params.id;
   connection.query('DELETE FROM roles WHERE id_rol = ?', id, (err, results) => {
@@ -248,7 +255,7 @@ router.delete('/roles/id/:id', (req, res) => {
   });
 });
 
-// Subir un Excel
+// Subida de archivo Excel para roles
 router.post("/role-excel", upload.single("file"), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: "No se subió ningún archivo." });
@@ -257,6 +264,7 @@ router.post("/role-excel", upload.single("file"), async (req, res) => {
   console.log("Archivo recibido:", req.file.originalname);
 
   try {
+    // Leer el archivo Excel
     const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
     const sheetName = workbook.SheetNames[0];
     const worksheet = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
@@ -267,15 +275,18 @@ router.post("/role-excel", upload.single("file"), async (req, res) => {
     let registrosDuplicados = 0;
     let registrosFaltantes = 0;
 
+    // Procesar cada fila
     for (const row of worksheet) {
       let { nombre_rol, permisos } = row;
-      
+
+      // Validar campos
       if (!nombre_rol || !permisos) {
         row.status = "Datos faltantes";
         registrosFaltantes++;
         continue;
       }
 
+      // Verificar si el rol ya existe
       const rolExistente = await new Promise((resolve, reject) => {
         connection.query("SELECT * FROM roles WHERE nombre_rol = ?", [nombre_rol], (err, results) => {
           if (err) reject(err);
@@ -287,6 +298,7 @@ router.post("/role-excel", upload.single("file"), async (req, res) => {
         row.status = "Duplicado";
         registrosDuplicados++;
       } else {
+        // Insertar nuevo rol
         await new Promise((resolve, reject) => {
           connection.query(
             "INSERT INTO roles (nombre_rol, permisos) VALUES (?, ?)",
@@ -302,6 +314,7 @@ router.post("/role-excel", upload.single("file"), async (req, res) => {
       }
     }
 
+    // Enviar resumen y resultados
     res.json({
       registrosInsertados,
       registrosDuplicados,
@@ -315,7 +328,9 @@ router.post("/role-excel", upload.single("file"), async (req, res) => {
 });
 
 ///////////////////////////////////////////////////////////////////////////////////////////
-//Charger stuff
+// CHARGERS (CARGADORES)
+///////////////////////////////////////////////////////////////////////////////////////////
+
 // Obtener todos los cargadores
 router.get('/chargers', (req, res) => {
   connection.query('SELECT * FROM cargador', (err, results) => {
@@ -324,7 +339,7 @@ router.get('/chargers', (req, res) => {
       res.status(500).json({ error: 'Error al obtener cargadores' });
       return;
     }
-    res.json(results);
+    res.json(results); // Devuelve todos los registros de la tabla 'cargador'
   });
 });
 
@@ -341,7 +356,7 @@ router.get('/chargers/id/:id_cargador', (req, res) => {
       res.status(404).json({ error: 'Cargador no encontrado' });
       return;
     }
-    res.json(results[0]);
+    res.json(results[0]); // Devuelve el cargador específico
   });
 });
 
@@ -358,7 +373,7 @@ router.post('/chargers', (req, res) => {
   });
 });
 
-// Actualizar un registro
+// Actualizar un cargador por ID
 router.put('/chargers/id/:id', (req, res) => {
   const id = req.params.id;
   const datosActualizados = req.body;
@@ -372,7 +387,7 @@ router.put('/chargers/id/:id', (req, res) => {
   });
 });
 
-// Eliminar un registro
+// Eliminar un cargador por ID
 router.delete('/chargers/id/:id', (req, res) => {
   const id = req.params.id;
   connection.query('DELETE FROM cargador WHERE id_cargador = ?', id, (err, results) => {
@@ -385,7 +400,7 @@ router.delete('/chargers/id/:id', (req, res) => {
   });
 });
 
-// Subir un Excel
+// Subir datos de cargadores desde un archivo Excel
 router.post("/charger-excel", upload.single("file"), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: "No se subió ningún archivo." });
@@ -394,6 +409,7 @@ router.post("/charger-excel", upload.single("file"), async (req, res) => {
   console.log("Archivo recibido:", req.file.originalname);
 
   try {
+    // Leer el archivo Excel
     const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
     const sheetName = workbook.SheetNames[0];
     const worksheet = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
@@ -403,10 +419,11 @@ router.post("/charger-excel", upload.single("file"), async (req, res) => {
     let registrosInsertados = 0;
     let registrosFaltantes = 0;
 
-    // Process each row and assign statuses
+    // Procesar cada fila del Excel
     for (const row of worksheet) {
       let { ubicacion, estado } = row;
 
+      // Validar que no falten campos
       if (!ubicacion || !estado) {
         row.status = "Datos faltantes";
         registrosFaltantes++;
@@ -415,7 +432,7 @@ router.post("/charger-excel", upload.single("file"), async (req, res) => {
       }
 
       try {
-        // Insert data into the database
+        // Insertar datos en la base de datos
         await new Promise((resolve, reject) => {
           connection.query(
             "INSERT INTO cargador (ubicacion, estado) VALUES (?, ?)",
@@ -426,21 +443,21 @@ router.post("/charger-excel", upload.single("file"), async (req, res) => {
             }
           );
         });
-        row.status = "Subido"; // Mark row as uploaded
+        row.status = "Subido";
         registrosInsertados++;
       } catch (err) {
-        row.status = "Datos faltantes"; // Handle any error during insertion
+        row.status = "Error al insertar";
         console.error("Error al insertar la fila:", row, err);
       }
     }
 
     console.log("Datos a enviar:", worksheet);
 
-    // Return the status of each row along with the counters
+    // Enviar resultados del procesamiento
     res.json({
       registrosInsertados,
       registrosFaltantes,
-      data: worksheet, // Send the row data with the statuses
+      data: worksheet,
     });
   } catch (error) {
     console.error("Error al procesar archivo:", error);
@@ -449,8 +466,10 @@ router.post("/charger-excel", upload.single("file"), async (req, res) => {
 });
 
 ///////////////////////////////////////////////////////////////////////////////////////////
-//Maintenance stuff
-// Obtener todos los cargadores
+// MAINTENANCE (MANTENIMIENTOS)
+///////////////////////////////////////////////////////////////////////////////////////////
+
+// Obtener todos los registros de mantenimiento
 router.get('/maintenance', (req, res) => {
   connection.query('SELECT * FROM mantenimientos', (err, results) => {
     if (err) {
@@ -458,11 +477,11 @@ router.get('/maintenance', (req, res) => {
       res.status(500).json({ error: 'Error al obtener historial' });
       return;
     }
-    res.json(results);
+    res.json(results); // Devuelve todos los mantenimientos
   });
 });
 
-// Obtener un cargador por su ID
+// Obtener un registro de mantenimiento por ID
 router.get('/maintenance/id/:id_historial', (req, res) => {
   const id_historial = req.params.id_historial;
   connection.query('SELECT * FROM mantenimientos WHERE id_historial = ?', id_historial, (err, results) => {
@@ -475,11 +494,11 @@ router.get('/maintenance/id/:id_historial', (req, res) => {
       res.status(404).json({ error: 'Historial no encontrado' });
       return;
     }
-    res.json(results[0]);
+    res.json(results[0]); // Devuelve el mantenimiento específico
   });
 });
 
-// Crear un nuevo cargador
+// Crear un nuevo registro de mantenimiento
 router.post('/maintenance', (req, res) => {
   const nuevoRegistro = req.body;
   connection.query('INSERT INTO mantenimientos SET ?', nuevoRegistro, (err, results) => {
@@ -492,7 +511,7 @@ router.post('/maintenance', (req, res) => {
   });
 });
 
-// Actualizar un registro
+// Actualizar un registro de mantenimiento
 router.put('/maintenance/id/:id', (req, res) => {
   const id = req.params.id;
   const datosActualizados = req.body;
@@ -506,7 +525,7 @@ router.put('/maintenance/id/:id', (req, res) => {
   });
 });
 
-// Eliminar un registro
+// Eliminar un registro de mantenimiento
 router.delete('/maintenance/id/:id', (req, res) => {
   const id = req.params.id;
   connection.query('DELETE FROM mantenimientos WHERE id_historial = ?', id, (err, results) => {
@@ -519,7 +538,7 @@ router.delete('/maintenance/id/:id', (req, res) => {
   });
 });
 
-//Subir un Excel
+// Subir un archivo Excel con registros de mantenimiento
 router.post("/maintenance-excel", upload.single("file"), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: "No se subió ningún archivo." });
@@ -537,11 +556,10 @@ router.post("/maintenance-excel", upload.single("file"), async (req, res) => {
     let registrosInsertados = 0;
     let registrosFaltantes = 0;
 
-    // Process each row and assign statuses
     for (const row of worksheet) {
       let { id_cargador, id_usuario, fecha, tipo, descripcion } = row;
 
-      // Check if any required data is missing
+      // Validar que no falten campos requeridos
       if (!id_cargador || !id_usuario || !fecha || !tipo || !descripcion) {
         row.status = "Datos faltantes";
         registrosFaltantes++;
@@ -550,7 +568,7 @@ router.post("/maintenance-excel", upload.single("file"), async (req, res) => {
       }
 
       try {
-        // Insert data into the database
+        // Insertar el mantenimiento en la base de datos
         await new Promise((resolve, reject) => {
           connection.query(
             "INSERT INTO mantenimientos (id_cargador, id_usuario, fecha, tipo, descripcion) VALUES (?, ?, ?, ?, ?)",
@@ -561,21 +579,21 @@ router.post("/maintenance-excel", upload.single("file"), async (req, res) => {
             }
           );
         });
-        row.status = "Subido"; // Mark row as uploaded
+        row.status = "Subido";
         registrosInsertados++;
       } catch (err) {
-        row.status = "Datos faltantes"; // Handle any error during insertion
+        row.status = "Error al insertar";
         console.error("Error al insertar la fila:", row, err);
       }
     }
 
     console.log("Datos a enviar:", worksheet);
 
-    // Return the status of each row along with the counters
+    // Devolver resumen del proceso
     res.json({
       registrosInsertados,
       registrosFaltantes,
-      data: worksheet, // Send the row data with the statuses
+      data: worksheet,
     });
   } catch (error) {
     console.error("Error al procesar archivo:", error);
@@ -584,8 +602,10 @@ router.post("/maintenance-excel", upload.single("file"), async (req, res) => {
 });
 
 ///////////////////////////////////////////////////////////////////////////////////////////
-//Login stuff
-// Obtener todos los logins
+// LOGIN
+///////////////////////////////////////////////////////////////////////////////////////////
+
+// Obtener todos los registros de login
 router.get('/logins', (req, res) => {
   connection.query('SELECT * FROM login', (err, results) => {
     if (err) {
@@ -593,11 +613,11 @@ router.get('/logins', (req, res) => {
       res.status(500).json({ error: 'Error al obtener login' });
       return;
     }
-    res.json(results);
+    res.json(results); // Devuelve todos los logins
   });
 });
 
-// Obtener un cargador por su ID
+// Obtener un registro de login por ID
 router.get('/logins/id/:id_log', (req, res) => {
   const id_log = req.params.id_log;
   connection.query('SELECT * FROM login WHERE id_log = ?', id_log, (err, results) => {
@@ -610,19 +630,18 @@ router.get('/logins/id/:id_log', (req, res) => {
       res.status(404).json({ error: 'Login no encontrado' });
       return;
     }
-    res.json(results[0]);
+    res.json(results[0]); // Devuelve el login específico
   });
 });
 
+// Crear un nuevo registro de login
 router.post('/logins', (req, res) => {
   const { id_usuario, accion, hora } = req.body;
 
-  // Validate that id_usuario is a valid number
+  // Validación básica de campos
   if (!id_usuario || isNaN(id_usuario)) {
     return res.status(400).json({ error: 'Invalid id_usuario' });
   }
-
-  // Validate that accion and hora are not empty
   if (!accion || !hora) {
     return res.status(400).json({ error: 'Accion or hora cannot be empty' });
   }
@@ -638,8 +657,7 @@ router.post('/logins', (req, res) => {
   });
 });
 
-
-// Actualizar un registro
+// Actualizar un registro de login por ID
 router.put('/logins/id/:id_log', (req, res) => {
   const id_log = req.params.id_log;
   const datosActualizados = req.body;
@@ -653,7 +671,7 @@ router.put('/logins/id/:id_log', (req, res) => {
   });
 });
 
-// Eliminar un registro
+// Eliminar un registro de login
 router.delete('/logins/id/:id_log', (req, res) => {
   const id_log = req.params.id_log;
   connection.query('DELETE FROM login WHERE id_log = ?', id_log, (err, results) => {
@@ -666,12 +684,14 @@ router.delete('/logins/id/:id_log', (req, res) => {
   });
 });
 
+///////////////////////////////////////////////////////////////////////////////////////////
+// VOLTAJE Y CORRIENTE (ESP32 API)
+///////////////////////////////////////////////////////////////////////////////////////////
 
-//Api del cargador-------------------------------------------------------------------------------
- //const app = express();
-// const port = 3000;
-router.use(express.json()); // Middleware para parsear JSON
+// Middleware para procesar JSON en el router
+router.use(express.json());
 
+// Obtener datos de energía
 router.get('/get/voltaje', (req, res) => {
   connection.query('SELECT * FROM energia', (err, results) => {
     if (err) {
@@ -679,42 +699,47 @@ router.get('/get/voltaje', (req, res) => {
       res.status(500).json({ error: 'Error al obtener datos de energia' });
       return;
     }
-    res.json(results);
+    res.json(results); // Devuelve los registros de energía (voltaje, corriente)
   });
 });
 
-// Ruta para recibir los datos del ESP32
+// Crear una instancia de express para este servidor aparte
 const app = express();
 app.use(express.json());
 app.use(cors());
 
+// Iniciar el servidor para datos del ESP32
 const PORT = 3007;
 app.listen(PORT, () => {
   console.log(`Servidor API a la espera de consulta, por el puerto ${PORT}`);
 });
+
+// Recibir datos del ESP32 y guardarlos en la base de datos
 app.post('/api/voltaje', (req, res) => {
   const { voltaje, corriente } = req.body;
+
   console.log("Voltaje recibido:", voltaje);
   console.log("Corriente recibida:", corriente);
 
   if (voltaje === undefined || corriente === undefined) {
-      return res.status(400).json({ error: 'Datos incompletos' });
+    return res.status(400).json({ error: 'Datos incompletos' });
   }
 
-  var sql = "INSERT INTO energia (voltaje, corriente) VALUES (?, ?)";
-  var values = [voltaje, corriente];
+  const sql = "INSERT INTO energia (voltaje, corriente) VALUES (?, ?)";
+  const values = [voltaje, corriente];
 
-  connection.query(sql, values, function (err, results) {
-      if (err) {
-          console.error("Error al insertar datos:", err);
-          return res.status(500).json({ error: "Error al insertar datos en la base de datos" });
-      }
-      
-      console.log("Datos de energía insertados exitosamente");
-      res.json({ message: "Datos guardados correctamente" });
+  connection.query(sql, values, (err, results) => {
+    if (err) {
+      console.error("Error al insertar datos:", err);
+      return res.status(500).json({ error: "Error al insertar datos en la base de datos" });
+    }
+
+    console.log("Datos de energía insertados exitosamente");
+    res.json({ message: "Datos guardados correctamente" });
   });
 });
 
+// (No se usa esta ruta correctamente porque está mal definida, debería ser .get('/api/datos'))
 app.get("api/datos", (req, res) => {
   const { voltaje, corriente } = req.body;
   console.log(voltaje);
